@@ -21,6 +21,7 @@ from .render import *
 from functools import partial
 from PIL import Image
 import numpy as np
+import re
         
 class Camera:
     '''Abstracts a camera or viewer as a collection of rays through a viewscreen'''
@@ -72,6 +73,16 @@ class Camera:
 
         self.rays = Rays(p=np.tile(self.camera_orig,(len(self.pixel_directions_world),1)),d=N(self.pixel_directions_world))
 
+def deduplicate(fragments):
+    included = set()
+    result = []
+    for f in fragments:
+        if f in included:
+            continue
+        included.add(f)
+        result.append(f)
+    return result
+
 class Scene:
     '''A renderable scene consists of a SDF geometry, some number of lights, and 
        a Camera to specifiy what perspective to render'''
@@ -80,7 +91,7 @@ class Scene:
         self.lights = lights
         self.cam = cam
         
-    def render(self,antialias=None,ang_res=0.02):
+    def cpu_render(self,antialias=None,ang_res=0.02):
         '''Heavy lifting is done in the `render` module'''
         out_shape = (self.cam.height_px,self.cam.width_px,3)
         if antialias is not None:
@@ -92,4 +103,123 @@ class Scene:
             return Image.fromarray((colors/antialias).astype(np.uint8))
         else:
             return Image.fromarray(march_many(self.cam.rays,self.sdf,self.lights).reshape(out_shape))
+            
+    
+    def render(self,ctx=None,antialias=None,ang_res=0.02):
+        import moderngl
+        if ctx is None:
+            ctx = moderngl.create_standalone_context()
+        vertex_shader = '''
+            in vec2 position;
+            void main() {
+                gl_Position = vec4(position.xy,0.,1.);
+            }
+        '''
+        fragment_shader = self.glsl()
+        
+        glpg = ctx.program(vertex_shader=vertex_shader,fragment_shader=fragment_shader)
+        
+        data = np.asarray([-1,1,-1,-1,1,1,1,-1],dtype=np.float32)
+        vbo = ctx.buffer(data.tobytes())
+        res = (self.cam.width_px,self.cam.height_px)
+        glpg['u_resolution'] = res
+        glpg['u_time'] = 0.
+
+        vao = ctx.simple_vertex_array(glpg, vbo, 'position')
+        fbo = ctx.simple_framebuffer(res)
+        fbo.use()
+        fbo.clear(0.,0.,0.,1.)
+        vao.render(moderngl.TRIANGLE_STRIP)
+        return Image.frombytes('RGB', fbo.size, fbo.read(), 'raw', 'RGB', 0, -1)
+        
+            
+    def glsl(self):
+        geo,prop,scafolding = self.sdf.glsl()
+        
+        geo = f'''
+            float sdf(vec3 p) {{
+                return {geo};
+            }}
+        '''
+        
+        prop = f'''
+            Property prop(vec3 p, vec3 d) {{
+                return {prop}.prop;
+            }}
+        '''
+        
+        lights = []
+        lighting = []
+        for li in self.lights:
+            light,frags = li.glsl()
+            lighting.extend(frags)
+            lights.append(light)
+        
+        light = '''
+            vec3 light(vec3 p, vec3 d, vec3 n) {
+                vec3 color = vec3(0.0,0.0,0.0);'''+('\n'.join([f'''
+                color += {li};''' for li in lights]))+'''
+                return color;
+            }
+        '''
+        
+        entrypoint = f'''
+            void main() {{
+                vec2 st = gl_FragCoord.xy/u_resolution;
+                //seed_rand(st);
+                float ratio = u_resolution.x/u_resolution.y;
+                if (ratio >= 1.0) {{
+                    st.x *= ratio;
+                    st.x += (1. - ratio)/2.;
+                }} else {{
+                    st.y /= ratio;
+                    st.y += (1. - 1./ratio)/2.;
+                }}
+                st.x = st.x*2.0-1.0;
+                st.y = st.y*2.0-1.0;
+                
+                float view_dist = 2.0;
+                vec3 px_cam = vec3(st.x,st.y,view_dist);
+                
+                /*
+                float cost = cos(0.4*cos(u_time/2.));
+                float sint = sin(0.4*cos(u_time/2.));
+                */
+                float cost = cos(u_time/2.);
+                float sint = sin(u_time/2.);
+
+                mat3 cam_proj = mat3(cost,0.0,-sint,0.0,1.0,0.0,sint,0.0,cost);
+                vec3 cam_orig = vec3(-8.0*sint,0.0,-8.*cost);
+                
+                vec3 color = vec3(0.0,0.0,0.0);
+                const int passes = 1;
+                for (int i = 0; i < passes; i++) {{
+                    //color += cast_ray_rt(cam_orig,normalize(cam_proj*px_cam))/float(passes);
+                    color += cast_ray_bt(cam_orig,normalize(cam_proj*px_cam))/float(passes);
+                }}
+                gl_FragColor = vec4(color,1.0);
+            }}
+        '''
+        
+        scafolding = deduplicate(scafolding)
+        lighting = deduplicate(lighting)
+        elements = [glsl_core]+scafolding+[geo,prop,glsl_tracking]+lighting+[light,glsl_render_backtrace,entrypoint]
+        r = re.compile(r'( +).*')
+        def process(elem):
+            elems = elem.split('\n')
+            for e in elems:
+                if len(e.strip()) > 0:
+                    if (m:=r.match(e)):
+                        prefix = m.group(1)
+                    else:
+                        prefix = ''
+                    break
+            rep = re.compile(f'^{prefix}')
+            elems = [rep.sub('',e) for e in elems]
+            return '\n'.join(elems)
+        fragment_shader = ''.join([process(e) for e in elements])
+        return fragment_shader
+
+            
+
 

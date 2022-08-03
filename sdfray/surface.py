@@ -20,7 +20,8 @@ import numpy as np
 
 class SurfaceProp:
     '''Defines properties of a surface'''
-    def __init__(self,color=A([1.0,1.0,1.0]),diffuse=0.8,specular=0.0,refractive_index=1.0,transmit=0.0):
+    
+    def __init__(self,color=A([1.0,1.0,1.0]),diffuse=0.8,specular=0.0,refractive_index=1.0,transmit=0.0,emittance=A([0.0,0.0,0.0])):
         '''Most quantities are multipliers for effects. [0,1] is realistic, but not required
            Refractive index is the usual way, where the speed of light in the medium is c/n
            Default surface is 80% diffuse reflective'''
@@ -29,31 +30,64 @@ class SurfaceProp:
         self.refractive_index = refractive_index
         self.transmit = transmit
         self.color = color
+        self.emittance = emittance
+        self.name = f'var_{hash((diffuse,specular,refractive_index,transmit,tuple(color),tuple(emittance))) % 100000000}'
+        
+    def glsl(self):
+        color = f'vec3({self.color[0]},{self.color[1]},{self.color[2]})'
+        emittance = f'vec3({self.emittance[0]},{self.emittance[1]},{self.emittance[2]})'
+        frags = [f'''
+            const Property {self.name} = Property({self.diffuse},{self.specular},{self.transmit},{self.refractive_index},{color},{emittance});
+        ''']
+        return f'{self.name}',frags
         
 class Surface:
     '''A paramaterized surface that returns SurfaceProp as a function of position'''
+    
     def __init__(self):
         pass
+        
     def __call__(self,pts):
         return self.fn(pts)
+        
     def fn(self,pts):
         raise Exception('Use a Surface implementation, instead!')
+        
+    def glsl(self):
+        raise Exception(f'{type(self)} does not implement glsl')
+        
     
 class UniformSurface(Surface):
     '''A surface that has the same properties everywhere'''
+    
     def __init__(self,prop,**kwargs):
         super().__init__(**kwargs)
         self.prop = prop
+        
     def fn(self,pts):
         return np.full(len(pts),self.prop)
+        
+    def glsl(self):
+        prop,frags = self.prop.glsl()
+        frags.append(UniformSurface.glsl_function)
+        return f'uniform_surf(p,d,{prop})',frags
+        
+    glsl_function = '''
+        Property uniform_surf(vec3 p, vec3 d, Property surf) {
+            return surf;
+        }
+    '''
 
 class CheckerSurface(Surface):
+    '''The standard graphics demo checker pattern'''
+
     def __init__(self,checker_size=1.0,a_v=[1,0,0],a=SurfaceProp(diffuse=0.95),b_v=[0,0,1],b=SurfaceProp(diffuse=0.05)):
         self.checker_size = checker_size
         self.a = a
         self.b = b
         self.a_v = N(A(a_v))
         self.b_v = N(A(b_v))
+        
     def fn(self,pts):
         a_c = np.sum(pts*self.a_v,axis=-1)
         b_c = np.sum(pts*self.b_v,axis=-1)
@@ -62,6 +96,24 @@ class CheckerSurface(Surface):
         a_odd = a_c >= self.checker_size
         b_odd = b_c >= self.checker_size
         return np.where(a_odd == b_odd,self.a,self.b)
+        
+    def glsl(self): #FIXME
+        aprop,afrags = self.a.glsl()
+        bprop,bfrags = self.b.glsl()
+        frags = afrags+bfrags+[CheckerSurface.glsl_function]
+        return f'uniform_surf(p,d,{prop})',frags
+        
+    glsl_function = '''
+        Property checker_surf(vec3 p, vec3 d, vec3 anchor, vec3 norm, float checker_size, Property a, Property b) {
+            bool a_odd = mod(p.x,2.*checker_size) >= checker_size;
+            bool b_odd = mod(p.z,2.*checker_size) >= checker_size;
+            if (a_odd == b_odd) {
+                return a;
+            } else {
+                return b;
+            }
+        }
+    ''' #FIXME
         
 class LimbDarkening(Surface):
     def __init__(self,emittance=[1,0.7,0]):

@@ -63,6 +63,9 @@ class SDF:
         '''Calls the configured surface to obtain properties'''
         return self.surface(pts)
         
+    def glsl(self):
+        raise Exception(f'{type(self)} does not implement glsl')
+        
             
 class Intersection(SDF):
     '''Defines a SDF for the intersection of two SDFs'''
@@ -86,6 +89,33 @@ class Intersection(SDF):
         mask = ~mask
         props[mask] = self.b.props(pts[mask])
         return props
+    
+    def glsl(self):
+        ageo,aprop,afrags = self.a.glsl()
+        bgeo,bprop,bfrags = self.b.glsl()
+        geo = f'intersect({ageo},{bgeo})'
+        if self.surface is None:
+            prop = f'intersect({aprop},{bprop})'
+            sfrags = []
+        else:
+            sglsl,sfrags = self.surface.glsl()
+            prop = f'wrap(intersect({aprop},{bprop}),{sglsl})'
+        fragments = [Intersection.glsl_function]+afrags+bfrags+sfrags
+        return geo,prop,fragments
+        
+    glsl_function = '''
+        float intersect(float a, float b) {
+            return max(a,b);
+        }
+        
+        GeoInfo intersect(GeoInfo a, GeoInfo b) {
+            if (a.sdf > b.sdf) {
+                return a;
+            } else {
+                return b;
+            }
+        }
+    '''
         
 class Union(SDF):
     '''Defines a SDF for the union of two SDFs'''
@@ -109,6 +139,33 @@ class Union(SDF):
         mask = ~mask
         props[mask] = self.b.props(pts[mask])
         return props
+        
+    def glsl(self):
+        ageo,aprop,afrags = self.a.glsl()
+        bgeo,bprop,bfrags = self.b.glsl()
+        geo = f'join({ageo},{bgeo})'
+        if self.surface is None:
+            prop = f'join({aprop},{bprop})'
+            sfrags = []
+        else:
+            sglsl,sfrags = self.surface.glsl()
+            prop = f'wrap(join({aprop},{bprop}),{sglsl})'
+        fragments = [Union.glsl_function]+afrags+bfrags+sfrags
+        return geo,prop,fragments
+        
+    glsl_function = '''
+        float join(float a, float b) {
+            return min(a,b);
+        }
+        
+        GeoInfo join(GeoInfo a, GeoInfo b) {
+            if (a.sdf < b.sdf) {
+                return a;
+            } else {
+                return b;
+            }
+        }
+    '''
 
 class Subtraction(SDF):
     '''Defines a SDF for the subtraction of two SDFs'''
@@ -131,3 +188,31 @@ class Subtraction(SDF):
         mask = ~mask
         props[mask] = self.b.props(pts[mask])
         return props
+        
+    def glsl(self):
+        ageo,aprop,afrags = self.a.glsl()
+        bgeo,bprop,bfrags = self.b.glsl()
+        geo = f'subtract({ageo},{bgeo})'
+        if self.surface is None:
+            prop = f'subtract({aprop},{bprop})'
+            sfrags = []
+        else:
+            sglsl,sfrags = self.surface.glsl()
+            prop = f'wrap(subtract({aprop},{bprop}),{sglsl})'
+        fragments = [Subtraction.glsl_function]+afrags+bfrags+sfrags
+        return geo,prop,fragments
+        
+    glsl_function = '''
+        float subtract(float a, float b) {
+            return max(a,-b);
+        }
+        
+        GeoInfo subtract(GeoInfo a, GeoInfo b) {
+            if (a.sdf > -b.sdf) {
+                return a;
+            } else {
+                return b;
+            }
+        }
+
+    '''

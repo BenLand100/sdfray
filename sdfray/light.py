@@ -65,6 +65,9 @@ class Light:
                 colors[m] += ((light_colors*surf_colors).T*out_d_dot_normal).T
             
         return colors
+        
+    def glsl(self):
+        raise Exception(f'{type(self)} does not implement glsl')
 
 class AmbientLight(Light):
     '''A light that is _everywhere_'''
@@ -77,6 +80,9 @@ class AmbientLight(Light):
         
     def illumination(self,pts,pointing):
         return np.tile(self.color,(len(pts),1))
+        
+    def glsl(self):
+        return f'vec3({self.color[0]},{self.color[1]},{self.color[2]})',[]
 
 class DistantLight(Light):
     '''A light that is far from the scene, and comes from a particular direction'''
@@ -90,6 +96,26 @@ class DistantLight(Light):
         
     def illumination(self,pts,pointing):
         return np.tile(self.color,(len(pts),1))
+        
+    def glsl(self):
+        direction = f'vec3({self.direction[0]},{self.direction[1]},{self.direction[2]})'
+        color = f'vec3({self.color[0]},{self.color[1]},{self.color[2]})'
+        light = f'distant_light(p,d,n,{direction},{color})'
+        frags = [DistantLight.glsl_function]
+        return light,frags
+        
+    glsl_function = '''
+        vec3 distant_light(vec3 p, vec3 d, vec3 n, vec3 d_light, vec3 c_light)  {
+            vec3 p_l = p;
+            vec3 d_l = d_light;
+            vec3 g;
+            if (!next_surface(p_l,d_l,g)) {
+                float d_light_n = dot(normalize(d_light),n);
+                return d_light_n*c_light;
+            }
+            return vec3(0.,0.,0.);
+        }
+    '''
     
 class PointLight(Light):
     '''A light that is directional within the scene, and obeys 1/r^2'''
@@ -104,3 +130,28 @@ class PointLight(Light):
     def illumination(self,pts,pointing):
         intensity = 1/L(pointing)**2
         return np.outer(intensity,self.color)
+    
+    
+    def glsl(self):
+        position = f'vec3({self.position[0]},{self.position[1]},{self.position[2]})'
+        color = f'vec3({self.color[0]},{self.color[1]},{self.color[2]})'
+        light = f'point_light(p,d,n,{position},{color})'
+        frags = [PointLight.glsl_function]
+        return light,frags
+        
+    glsl_function = '''
+        vec3 point_light(vec3 p, vec3 d, vec3 n, vec3 p_light, vec3 c_light)  {
+            vec3 d_light = p_light-p;
+            float dist = length(d_light);
+            vec3 d_l = d_light/dist;
+            vec3 p_l = p;
+            vec3 g;
+            if (!next_surface(p_l,d_l,g,p_light)) {
+                float d_light_n = dot(d_l,n);
+                return d_light_n/(dist*dist)*c_light;
+            }
+            return vec3(0.,0.,0.);
+        }
+    '''
+    
+        
