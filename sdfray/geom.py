@@ -63,8 +63,36 @@ class SDF:
         '''Calls the configured surface to obtain properties'''
         return self.surface(pts)
         
-    def glsl(self):
-        raise Exception(f'{type(self)} does not implement glsl')
+    def glsl(self,tx=None,rot=None):
+        tx,rot,glsl_tx,glsl_rot = self.glsl_transform(tx,rot)
+        geo,gfrags = self.glsl_geo(glsl_tx,glsl_rot)
+        prop,sfrags = self.glsl_prop(geo)
+        return geo,prop,gfrags+sfrags
+        
+    def glsl_geo(self,tx,rx):
+        raise Exception(f'{type(self)} does not implement glsl_Geo')
+    
+    def glsl_prop(self,geo):
+        if self.surface is None:
+            sfrags = []
+            prop = geo
+        else:
+            sglsl,sfrags = self.surface.glsl()
+            prop = f'wrap({geo},{sglsl})'
+        return prop,sfrags
+        
+    def glsl_transform(self,tx,rot):
+        if self.translate is not None:
+            if rot is None:
+                tx = self.translate + tx if tx is not None else self.translate
+            else:
+                tx = (rot.T @ self.translate) + tx if tx is not None else (rot.T @ self.translate)
+        if self.rotate is not None:
+            rot = self.rotate @ rot if rot is not None else self.rotate
+        glsl_tx = 'vec3(0.,0.,0.)' if tx is None else f'vec3({tx[0]},{tx[1]},{tx[2]})'
+        glsl_rot = 'mat3(1.,0.,0.,0.,1.,0.,0.,0.,1.)' if rot is None else \
+            f'mat3({rot[0,0]},{rot[1,0]},{rot[2,0]},{rot[0,1]},{rot[1,1]},{rot[2,1]},{rot[0,2]},{rot[1,2]},{rot[2,2]})'
+        return tx,rot,glsl_tx,glsl_rot
         
             
 class Intersection(SDF):
@@ -90,16 +118,13 @@ class Intersection(SDF):
         props[mask] = self.b.props(pts[mask])
         return props
     
-    def glsl(self):
-        ageo,aprop,afrags = self.a.glsl()
-        bgeo,bprop,bfrags = self.b.glsl()
+    def glsl(self,tx=None,rot=None):
+        tx,rot,glsl_tx,glsl_rot = self.glsl_transform(tx,rot)
+        ageo,aprop,afrags = self.a.glsl(tx=tx,rot=rot)
+        bgeo,bprop,bfrags = self.b.glsl(tx=tx,rot=rot)
         geo = f'intersect({ageo},{bgeo})'
-        if self.surface is None:
-            prop = f'intersect({aprop},{bprop})'
-            sfrags = []
-        else:
-            sglsl,sfrags = self.surface.glsl()
-            prop = f'wrap(intersect({aprop},{bprop}),{sglsl})'
+        prop = f'intersect({aprop},{bprop})'
+        prop,sfrags = self.glsl_prop(prop)
         fragments = [Intersection.glsl_function]+afrags+bfrags+sfrags
         return geo,prop,fragments
         
@@ -140,16 +165,13 @@ class Union(SDF):
         props[mask] = self.b.props(pts[mask])
         return props
         
-    def glsl(self):
-        ageo,aprop,afrags = self.a.glsl()
-        bgeo,bprop,bfrags = self.b.glsl()
+    def glsl(self,tx=None,rot=None):
+        tx,rot,glsl_tx,glsl_rot = self.glsl_transform(tx,rot)
+        ageo,aprop,afrags = self.a.glsl(tx=tx,rot=rot)
+        bgeo,bprop,bfrags = self.b.glsl(tx=tx,rot=rot)
         geo = f'join({ageo},{bgeo})'
-        if self.surface is None:
-            prop = f'join({aprop},{bprop})'
-            sfrags = []
-        else:
-            sglsl,sfrags = self.surface.glsl()
-            prop = f'wrap(join({aprop},{bprop}),{sglsl})'
+        prop = f'join({aprop},{bprop})'
+        prop,sfrags = self.glsl_prop(prop)
         fragments = [Union.glsl_function]+afrags+bfrags+sfrags
         return geo,prop,fragments
         
@@ -189,16 +211,13 @@ class Subtraction(SDF):
         props[mask] = self.b.props(pts[mask])
         return props
         
-    def glsl(self):
-        ageo,aprop,afrags = self.a.glsl()
-        bgeo,bprop,bfrags = self.b.glsl()
+    def glsl(self,tx=None,rot=None):
+        tx,rot,glsl_tx,glsl_rot = self.glsl_transform(tx,rot)
+        ageo,aprop,afrags = self.a.glsl(tx=tx,rot=rot)
+        bgeo,bprop,bfrags = self.b.glsl(tx=tx,rot=rot)
         geo = f'subtract({ageo},{bgeo})'
-        if self.surface is None:
-            prop = f'subtract({aprop},{bprop})'
-            sfrags = []
-        else:
-            sglsl,sfrags = self.surface.glsl()
-            prop = f'wrap(subtract({aprop},{bprop}),{sglsl})'
+        prop = f'subtract({aprop},{bprop})'
+        prop,sfrags = self.glsl_prop(prop)
         fragments = [Subtraction.glsl_function]+afrags+bfrags+sfrags
         return geo,prop,fragments
         

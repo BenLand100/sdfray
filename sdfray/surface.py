@@ -97,23 +97,27 @@ class CheckerSurface(Surface):
         b_odd = b_c >= self.checker_size
         return np.where(a_odd == b_odd,self.a,self.b)
         
-    def glsl(self): #FIXME
+    def glsl(self):
         aprop,afrags = self.a.glsl()
         bprop,bfrags = self.b.glsl()
         frags = afrags+bfrags+[CheckerSurface.glsl_function]
-        return f'uniform_surf(p,d,{prop})',frags
+        a_v = f'vec3({self.a_v[0]},{self.a_v[1]},{self.a_v[2]})'
+        b_v = f'vec3({self.b_v[0]},{self.b_v[1]},{self.b_v[2]})'
+        return f'checker_surf(p,d,{a_v},{b_v},{float(self.checker_size)},{aprop},{bprop})',frags
         
     glsl_function = '''
-        Property checker_surf(vec3 p, vec3 d, vec3 anchor, vec3 norm, float checker_size, Property a, Property b) {
-            bool a_odd = mod(p.x,2.*checker_size) >= checker_size;
-            bool b_odd = mod(p.z,2.*checker_size) >= checker_size;
+        Property checker_surf(vec3 p, vec3 d, vec3 a_v, vec3 b_v, float checker_size, Property a, Property b) {
+            float a_c = dot(p,a_v);
+            float b_c = dot(p,b_v);
+            bool a_odd = mod(a_c,2.*checker_size) >= checker_size;
+            bool b_odd = mod(b_c,2.*checker_size) >= checker_size;
             if (a_odd == b_odd) {
                 return a;
             } else {
                 return b;
             }
         }
-    ''' #FIXME
+    '''
         
 class LimbDarkening(Surface):
     def __init__(self,emittance=[1,0.7,0]):

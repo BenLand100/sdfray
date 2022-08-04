@@ -38,6 +38,7 @@ class Camera:
         self.width_px = width_px
         self.height_px = int(round(width_px/aspect_ratio))
         self.viewing_dist = viewing_dist
+        self.screen_width = screen_width
         x = np.linspace(-0.5,0.5,self.width_px)
         y = np.linspace(-1/2/aspect_ratio,1/2/aspect_ratio,self.height_px)
         self.X,self.Y = np.meshgrid(x,-y)
@@ -175,11 +176,10 @@ class Scene:
                     st.y /= ratio;
                     st.y += (1. - 1./ratio)/2.;
                 }}
-                st.x = st.x*2.0-1.0;
-                st.y = st.y*2.0-1.0;
+                st = {float(self.cam.screen_width)}*(st-0.5)/2.;
                 
-                float view_dist = 2.0;
-                vec3 px_cam = vec3(st.x,st.y,view_dist);
+                float view_dist = 0.1;
+                vec3 px_cam = vec3(st.x,st.y,{self.cam.viewing_dist});
                 
                 /*
                 float cost = cos(0.4*cos(u_time/2.));
