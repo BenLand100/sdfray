@@ -83,6 +83,7 @@ def next_surface(rays,sdf,stop_at=None,lighting=False):
     while len(alive) > 0:
         sd = sdf(p[alive])
         if np.any(m := (sd < 0)):
+            #FIXME this needs direction dependence 
             sd[m] = np.abs(sd[m])+WORLD_RES
         #if np.any(m := (sd < -WORLD_RES)):
         #    m = ~m
@@ -274,10 +275,15 @@ glsl_tracking = '''
     const float WORLD_RES = 1e-4;
     const float WORLD_MAX = 1e4;
     bool next_surface(inout vec3 p, inout vec3 d, out vec3 g, bool inside) {
-        for (int i = 0; i < 1000; i++) {
-        	float v = inside ? -sdf(p) : sdf(p);
+        for (int i = 0; i < 10000; i++) {
+            float v = inside ? -sdf(p) : sdf(p);
             if (v <= 0.) {
-                v = WORLD_RES - v;
+                g = inside ? -gradient(p) : gradient(p);
+                if (dot(g,d) < 0.0) {
+                    v = v - WORLD_RES/2.;
+                } else {
+                    v = WORLD_RES/2. - v;
+                }
             } else if (v < WORLD_RES) {
                 g = inside ? -gradient(p) : gradient(p);
                 if (dot(g,d) < 0.0) {
@@ -296,10 +302,15 @@ glsl_tracking = '''
     }
 
     bool next_surface(inout vec3 p, vec3 d, out vec3 g, vec3 stop_at) {
-        for (int i = 0; i < 1000; i++) {
-        	float v = sdf(p);
+        for (int i = 0; i < 10000; i++) {
+            float v = sdf(p);
             if (v <= 0.) {
-                v = WORLD_RES - v;
+                g = gradient(p);
+                if (dot(g,d) < 0.0) {
+                    v = v - WORLD_RES/2.;
+                } else {
+                    v = WORLD_RES/2. - v;
+                }
             } else if (v < WORLD_RES) {
                 g = gradient(p);
                 if (dot(g,d) < 0.0) {
@@ -349,31 +360,31 @@ glsl_render_backtrace = '''
         float prescale = 1.0;
         vec3 color = vec3(0.0,0.0,0.0);
         float atten = 1.0;
-        vec3 p_stack[10];
-        vec3 d_stack[10];
-        float prescale_stack[10];
+        vec3 p_stack[25];
+        vec3 d_stack[25];
+        float prescale_stack[25];
         int sp = 0;
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 2500; i++) {
             vec3 g;
             bool hit = next_surface(p,d,g);
             if (hit) {
                 Property s = prop(p,d);
                 vec3 n = normalize(g);
-		        bool keep_going = false;
+                bool keep_going = false;
                 
                 color += prescale*s.emittance;
                 
                 if (s.transmit > 0.0) {
-			        float n1 = 1.0;
+                    float n1 = 1.0;
                     float n2 = s.refractive_index;
                     vec3 ref_p = p;
                     vec3 ref_d = d; 
                     vec3 ref_n = n;
                     bool exited = resolve_transmission(n1,n2,ref_p,ref_d,ref_n);
                     if (exited) {
-                		Property ref_s = prop(ref_p,ref_d);
+                        Property ref_s = prop(ref_p,ref_d);
                         color += s.transmit*prescale*ref_s.diffuse*light(ref_p,ref_d,ref_n)*ref_s.color;
-                        if (sp < 5) {
+                        if (sp < 25) {
                             #define _PUSH(i) if (sp == i) {\\
                                 p_stack[i] = ref_p;\\
                                 d_stack[i] = ref_d;\\
@@ -390,6 +401,21 @@ glsl_render_backtrace = '''
                             PUSH(7)
                             PUSH(8)
                             PUSH(9)
+                            PUSH(10)
+                            PUSH(11)
+                            PUSH(12)
+                            PUSH(13)
+                            PUSH(14)
+                            PUSH(15)
+                            PUSH(16)
+                            PUSH(17)
+                            PUSH(18)
+                            PUSH(19)
+                            PUSH(20)
+                            PUSH(21)
+                            PUSH(22)
+                            PUSH(23)
+                            PUSH(24)
                             sp++;
                         }
                     }
@@ -405,9 +431,9 @@ glsl_render_backtrace = '''
                     keep_going = true;
                 }
                 
-		        if (keep_going && prescale > 1e-3) continue;
+                if (keep_going && prescale > 1e-4) continue;
             }
-	        if (sp > 0) {
+            if (sp > 0) {
                 sp--;
                 #define _POP(i) if (sp == i) {\\
                     p = p_stack[i];\\
@@ -425,6 +451,21 @@ glsl_render_backtrace = '''
                 POP(7)
                 POP(8)
                 POP(9) 
+                POP(10)
+                POP(11)  
+                POP(12)
+                POP(13)
+                POP(14)
+                POP(15)
+                POP(16)
+                POP(17)
+                POP(18)
+                POP(19) 
+                POP(20)
+                POP(21)  
+                POP(22)
+                POP(23)
+                POP(24)
                 continue;
             }
             return color;
@@ -440,7 +481,7 @@ glsl_render_raytrace = '''
 
     float rand() {
         float res = fract(sin(dot(rnd_state, vec2(12.9898,78.233))) * 43758.5453123);
-      	rnd_state.x = rnd_state.y;
+        rnd_state.x = rnd_state.y;
         rnd_state.y = res;
         return res;
     }
@@ -455,16 +496,16 @@ glsl_render_raytrace = '''
                 Property s = prop(p,d);
                 color += prescale*s.emittance;
                 vec3 n = normalize(g);
-		        bool keep_going = false;
+                bool keep_going = false;
                 
                 float rnd = rand();
                 if (rnd <= s.transmit) {
-			        float n1 = 1.0;
+                    float n1 = 1.0;
                     float n2 = s.refractive_index;
                     bool exited = resolve_transmission(n1,n2,p,d,n);
                     if (exited) {
                         prescale *= s.transmit;
-                		Property ref_s = prop(p,d);
+                        Property ref_s = prop(p,d);
                         color += prescale*ref_s.emittance;
                         keep_going = true;
                     }
@@ -483,9 +524,9 @@ glsl_render_raytrace = '''
                     prescale *= s.specular;
                     d = reflect(d,n);
                     keep_going = true;
-            	} // else absorbed
+                } // else absorbed
                 
-		        if (keep_going && max(max(prescale.x,prescale.y),prescale.z) > 1e-3) continue;
+                if (keep_going && max(max(prescale.x,prescale.y),prescale.z) > 1e-3) continue;
             }
             return color;
         }

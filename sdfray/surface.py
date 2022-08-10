@@ -34,10 +34,10 @@ class SurfaceProp:
         self.name = f'var_{hash((diffuse,specular,refractive_index,transmit,tuple(color),tuple(emittance))) % 100000000}'
         
     def glsl(self):
-        color = f'vec3({self.color[0]},{self.color[1]},{self.color[2]})'
-        emittance = f'vec3({self.emittance[0]},{self.emittance[1]},{self.emittance[2]})'
+        color = glsl_vec3(self.color)
+        emittance = glsl_vec3(self.emittance)
         frags = [f'''
-            const Property {self.name} = Property({self.diffuse},{self.specular},{self.transmit},{self.refractive_index},{color},{emittance});
+            const Property {self.name} = Property({glsl_float(self.diffuse)},{glsl_float(self.specular)},{glsl_float(self.transmit)},{glsl_float(self.refractive_index)},{color},{emittance});
         ''']
         return f'{self.name}',frags
         
@@ -101,9 +101,9 @@ class CheckerSurface(Surface):
         aprop,afrags = self.a.glsl()
         bprop,bfrags = self.b.glsl()
         frags = afrags+bfrags+[CheckerSurface.glsl_function]
-        a_v = f'vec3({self.a_v[0]},{self.a_v[1]},{self.a_v[2]})'
-        b_v = f'vec3({self.b_v[0]},{self.b_v[1]},{self.b_v[2]})'
-        return f'checker_surf(p,d,{a_v},{b_v},{float(self.checker_size)},{aprop},{bprop})',frags
+        a_v = glsl_vec3(self.a_v)
+        b_v = glsl_vec3(self.b_v)
+        return f'checker_surf(p,d,{a_v},{b_v},{glsl_float(self.checker_size)},{aprop},{bprop})',frags
         
     glsl_function = '''
         Property checker_surf(vec3 p, vec3 d, vec3 a_v, vec3 b_v, float checker_size, Property a, Property b) {

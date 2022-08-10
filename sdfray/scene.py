@@ -68,9 +68,10 @@ class Camera:
         if camera_roll is not None:
             self.camera_roll = camera_roll
         
-        self.proj = R.from_euler(seq='XYZ',angles=[self.camera_pitch,self.camera_yaw,self.camera_roll]).as_matrix()
+        self.proj = ZROT(self.camera_roll)@YROT(self.camera_yaw)@XROT(self.camera_pitch)
+        #self.proj = R.from_euler(seq='XYZ',angles=[self.camera_pitch,self.camera_yaw,self.camera_roll]).as_matrix()
 
-        self.pixel_directions_world = (self.proj @ self.pixel_locations_cam.T).T
+        self.pixel_directions_world = (np.asarray(self.proj,dtype=np.float64) @ np.asarray(self.pixel_locations_cam,dtype=np.float64).T).T
 
         self.rays = Rays(p=np.tile(self.camera_orig,(len(self.pixel_directions_world),1)),d=N(self.pixel_directions_world))
 
@@ -91,6 +92,9 @@ class Scene:
         self.sdf = sdf
         self.lights = lights
         self.cam = cam
+        self._glpg = None
+        self._res = None
+        self._ctx = None
         
     def cpu_render(self,antialias=None,ang_res=0.02):
         '''Heavy lifting is done in the `render` module'''
@@ -106,10 +110,13 @@ class Scene:
             return Image.fromarray(march_many(self.cam.rays,self.sdf,self.lights).reshape(out_shape))
             
     
-    def render(self,ctx=None,antialias=None,ang_res=0.02):
+    def render(self,antialias=None,ang_res=0.02,regenerate=False,time=0.):
         import moderngl
-        if ctx is None:
+        if self._ctx is None:
             ctx = moderngl.create_standalone_context()
+            self._ctx = ctx
+        else:
+            ctx = self._ctx
         vertex_shader = '''
             in vec2 position;
             void main() {
@@ -117,21 +124,30 @@ class Scene:
             }
         '''
         fragment_shader = self.glsl()
-        
-        glpg = ctx.program(vertex_shader=vertex_shader,fragment_shader=fragment_shader)
-        
-        data = np.asarray([-1,1,-1,-1,1,1,1,-1],dtype=np.float32)
-        vbo = ctx.buffer(data.tobytes())
         res = (self.cam.width_px,self.cam.height_px)
-        glpg['u_resolution'] = res
-        glpg['u_time'] = 0.
+        if regenerate or self._glpg is None:
+            try:
+                self._glpg  = ctx.program(vertex_shader=vertex_shader,fragment_shader=fragment_shader)
+            except:
+                print('\n'.join([f'{i:04} {l}' for i,l in enumerate(fragment_shader.split('\n'))]))
+                raise
+        
+            data = np.asarray([-1,1,-1,-1,1,1,1,-1],dtype=np.float32)
+            self._vbo = ctx.buffer(data.tobytes())
+        if regenerate or self._res is None or self._res != res:
+            self._vao = ctx.simple_vertex_array(self._glpg, self._vbo, 'position')
+            self._fbo = ctx.simple_framebuffer(res)
+            self._res = res
 
-        vao = ctx.simple_vertex_array(glpg, vbo, 'position')
-        fbo = ctx.simple_framebuffer(res)
-        fbo.use()
-        fbo.clear(0.,0.,0.,1.)
-        vao.render(moderngl.TRIANGLE_STRIP)
-        return Image.frombytes('RGB', fbo.size, fbo.read(), 'raw', 'RGB', 0, -1)
+        self._glpg['u_resolution'] = res
+        try:
+            self._glpg['u_time'] = time
+        except:
+            pass #nothing using u_time
+        self._fbo.use()
+        #fbo.clear(0.,0.,0.,1.)
+        self._vao.render(moderngl.TRIANGLE_STRIP)
+        return Image.frombytes('RGB', self._fbo.size, self._fbo.read(), 'raw', 'RGB', 0, -1)
         
             
     def glsl(self):
@@ -178,18 +194,10 @@ class Scene:
                 }}
                 st = {float(self.cam.screen_width)}*(st-0.5)/2.;
                 
-                float view_dist = 0.1;
                 vec3 px_cam = vec3(st.x,st.y,{self.cam.viewing_dist});
-                
-                /*
-                float cost = cos(0.4*cos(u_time/2.));
-                float sint = sin(0.4*cos(u_time/2.));
-                */
-                float cost = cos(u_time/2.);
-                float sint = sin(u_time/2.);
 
-                mat3 cam_proj = mat3(cost,0.0,-sint,0.0,1.0,0.0,sint,0.0,cost);
-                vec3 cam_orig = vec3(-8.0*sint,0.0,-8.*cost);
+                mat3 cam_proj = {glsl_mat3(self.cam.proj)};
+                vec3 cam_orig = {glsl_vec3(self.cam.camera_orig)};
                 
                 vec3 color = vec3(0.0,0.0,0.0);
                 const int passes = 1;

@@ -29,7 +29,8 @@ class SDF:
         if rotate is None:
             self.rotate = None
         else:
-            self.rotate = R.from_euler(seq=rotate_seq,angles=rotate).as_matrix()
+            self.rotate = ZROT(rotate[0]) @ YROT(rotate[1]) @ XROT(rotate[2])
+            #self.rotate = R.from_euler(seq=rotate_seq,angles=rotate).as_matrix()
         if translate is None:
             self.translate = None
         else:
@@ -89,9 +90,8 @@ class SDF:
                 tx = (rot.T @ self.translate) + tx if tx is not None else (rot.T @ self.translate)
         if self.rotate is not None:
             rot = self.rotate @ rot if rot is not None else self.rotate
-        glsl_tx = 'vec3(0.,0.,0.)' if tx is None else f'vec3({tx[0]},{tx[1]},{tx[2]})'
-        glsl_rot = 'mat3(1.,0.,0.,0.,1.,0.,0.,0.,1.)' if rot is None else \
-            f'mat3({rot[0,0]},{rot[1,0]},{rot[2,0]},{rot[0,1]},{rot[1,1]},{rot[2,1]},{rot[0,2]},{rot[1,2]},{rot[2,2]})'
+        glsl_tx = 'vec3(0.,0.,0.)' if tx is None else glsl_vec3(tx)
+        glsl_rot = 'mat3(1.,0.,0.,0.,1.,0.,0.,0.,1.)' if rot is None else glsl_mat3(rot)
         return tx,rot,glsl_tx,glsl_rot
         
             

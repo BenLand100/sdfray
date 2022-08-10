@@ -106,12 +106,12 @@ class DistantLight(Light):
         
     glsl_function = '''
         vec3 distant_light(vec3 p, vec3 d, vec3 n, vec3 d_light, vec3 c_light)  {
+            vec3 d_l = normalize(d_light);
             vec3 p_l = p;
-            vec3 d_l = d_light;
+            float cosa = dot(d_l,n);
             vec3 g;
-            if (!next_surface(p_l,d_l,g)) {
-                float d_light_n = dot(normalize(d_light),n);
-                return d_light_n*c_light;
+            if (cosa > 0. && !next_surface(p_l,d_l,g)) {
+                return cosa*c_light;
             }
             return vec3(0.,0.,0.);
         }
@@ -143,12 +143,13 @@ class PointLight(Light):
         vec3 point_light(vec3 p, vec3 d, vec3 n, vec3 p_light, vec3 c_light)  {
             vec3 d_light = p_light-p;
             float dist = length(d_light);
+            if (dist > 1e3) return vec3(0.,0.,0.);
             vec3 d_l = d_light/dist;
             vec3 p_l = p;
+            float cosa = dot(d_l,n);
             vec3 g;
-            if (!next_surface(p_l,d_l,g,p_light)) {
-                float d_light_n = dot(d_l,n);
-                return d_light_n/(dist*dist)*c_light;
+            if (cosa > 0. && !next_surface(p_l,d_l,g,p_light)) {
+                return cosa/(dist*dist)*c_light;
             }
             return vec3(0.,0.,0.);
         }

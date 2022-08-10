@@ -29,7 +29,7 @@ class Sphere(SDF):
         return L(pts) - self.radius
     
     def glsl_geo(self,tx,rot):
-        geo = f'sphere(p,{tx},{float(self.radius)})'
+        geo = f'sphere(p,{tx},{glsl_float(self.radius)})'
         frags = [Sphere.glsl_function]
         return geo,frags
         
@@ -50,7 +50,7 @@ class Box(SDF):
         return L(np.maximum(deltas,0.0)) + np.minimum(np.max(deltas,axis=-1),0.0)
     
     def glsl_geo(self,tx,rot):
-        whd = f'vec3({float(self.dims[0]),float(self.dims[1]),float(self.dims[2])})'
+        whd = glsl_vec3(self.dims)
         geo = f'box(p,{tx},{rot},{whd})'
         frags = [Box.glsl_function]
         return geo,frags
@@ -77,7 +77,7 @@ class Cylinder(SDF):
         return np.minimum(np.maximum(a,b),0.0) + L(np.maximum(A([a,b]).T,0))
         
     def glsl_geo(self,tx,rot):
-        geo = f'cylinder(p,{tx},{rot},{float(self.height)},{float(self.radius)})'
+        geo = f'cylinder(p,{tx},{rot},{glsl_float(self.height)},{glsl_float(self.radius)})'
         frags = [Cylinder.glsl_function]
         return geo,frags
         
