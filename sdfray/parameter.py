@@ -26,7 +26,7 @@ class Parameter:
         
     def __init__(self,ctx,contents,noparen=False):
         self.ctx = ctx
-        self.contents = contents
+        self.contents = tuple(contents) if isinstance(contents,list) else contents
         self.noparen = noparen
         
     def __str__(self):
@@ -68,6 +68,9 @@ class Parameter:
             return self.contents == o.contents
         else:
             return self.contents == o
+            
+    def __hash__(self):
+        return hash(self.contents)^hash(self.noparen)
     
     def __add__(self, o):
         if o == 0:

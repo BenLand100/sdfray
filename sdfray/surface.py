@@ -36,8 +36,9 @@ class SurfaceProp:
     def glsl(self):
         color = glsl_vec3(self.color)
         emittance = glsl_vec3(self.emittance)
+        # FIXME how to know when these can be const?
         frags = [f'''
-            const Property {self.name} = Property({glsl_float(self.diffuse)},{glsl_float(self.specular)},{glsl_float(self.transmit)},{glsl_float(self.refractive_index)},{color},{emittance});
+            Property {self.name} = Property({glsl_float(self.diffuse)},{glsl_float(self.specular)},{glsl_float(self.transmit)},{glsl_float(self.refractive_index)},{color},{emittance});
         ''']
         return f'{self.name}',frags
         
