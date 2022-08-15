@@ -82,7 +82,7 @@ class AmbientLight(Light):
         return np.tile(self.color,(len(pts),1))
         
     def glsl(self):
-        return f'vec3({self.color[0]},{self.color[1]},{self.color[2]})',[]
+        return glsl_vec3(self.color),[]
 
 class DistantLight(Light):
     '''A light that is far from the scene, and comes from a particular direction'''
@@ -98,8 +98,8 @@ class DistantLight(Light):
         return np.tile(self.color,(len(pts),1))
         
     def glsl(self):
-        direction = f'vec3({self.direction[0]},{self.direction[1]},{self.direction[2]})'
-        color = f'vec3({self.color[0]},{self.color[1]},{self.color[2]})'
+        direction = glsl_vec3(self.direction)
+        color = glsl_vec3(self.color)
         light = f'distant_light(p,d,n,{direction},{color})'
         frags = [DistantLight.glsl_function]
         return light,frags
@@ -131,10 +131,9 @@ class PointLight(Light):
         intensity = 1/L(pointing)**2
         return np.outer(intensity,self.color)
     
-    
     def glsl(self):
-        position = f'vec3({self.position[0]},{self.position[1]},{self.position[2]})'
-        color = f'vec3({self.color[0]},{self.color[1]},{self.color[2]})'
+        position = glsl_vec3(self.position)
+        color = glsl_vec3(self.color)
         light = f'point_light(p,d,n,{position},{color})'
         frags = [PointLight.glsl_function]
         return light,frags

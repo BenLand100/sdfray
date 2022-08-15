@@ -240,6 +240,29 @@ glsl_core = '''
     uniform vec2 u_resolution;
     uniform vec2 u_mouse;
     uniform float u_time;
+    uniform float u_nonce;
+    uniform float u_alpha;
+    
+    vec2 rnd_state;
+    void seed_rand(vec2 state) {
+        rnd_state = mat2(cos(u_time+u_nonce),-sin(u_time-u_nonce),sin(u_time-u_nonce),cos(u_time+u_nonce))*state;
+    }
+
+    float rand() {
+        for (int i = 0; i < 2; i++) {
+            float res = fract(sin(dot(rnd_state, vec2(12.9898,78.233))) * 43758.5453123);
+            rnd_state.x = rnd_state.y;
+            rnd_state.y = res;
+        }
+        return rnd_state.y;
+    }
+    
+    float rand_normal() {
+        return sqrt(-2.*log(rand()))*cos(2.*3.14159*rand());
+        //float nrnd = 0.0;
+        //for (int i = 0; i < 10; i++) nrnd += rand();
+        //return 2.*(nrnd/10.)-1.;
+    }
     
     struct Property {
         float diffuse, specular, transmit, refractive_index;
@@ -275,7 +298,7 @@ glsl_tracking = '''
     const float WORLD_RES = 1e-4;
     const float WORLD_MAX = 1e4;
     bool next_surface(inout vec3 p, inout vec3 d, out vec3 g, bool inside) {
-        for (int i = 0; i < 10000; i++) {
+        for (int i = 0; i < 2500; i++) {
             float v = inside ? -sdf(p) : sdf(p);
             if (v <= 0.) {
                 g = inside ? -gradient(p) : gradient(p);
@@ -302,7 +325,7 @@ glsl_tracking = '''
     }
 
     bool next_surface(inout vec3 p, vec3 d, out vec3 g, vec3 stop_at) {
-        for (int i = 0; i < 10000; i++) {
+        for (int i = 0; i < 2500; i++) {
             float v = sdf(p);
             if (v <= 0.) {
                 g = gradient(p);
@@ -473,26 +496,15 @@ glsl_render_backtrace = '''
     }
 '''
 
-glsl_render_raytrace = '''
-    vec2 rnd_state;
-    void seed_rand(vec2 state) {
-        rnd_state = mat2(cos(u_time),-sin(u_time),sin(u_time),cos(u_time))*state;
-    }
-
-    float rand() {
-        float res = fract(sin(dot(rnd_state, vec2(12.9898,78.233))) * 43758.5453123);
-        rnd_state.x = rnd_state.y;
-        rnd_state.y = res;
-        return res;
-    }
-    
+glsl_render_raytrace = '''    
     vec3 cast_ray_rt(vec3 p, vec3 d) {
         vec3 prescale = vec3(1.,1.,1.);
         vec3 color = vec3(0.,0.,0.);
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 16; i++) {
             vec3 g;
             bool hit = next_surface(p,d,g);
             if (hit) {
+                seed_rand(vec2(3.141e2,-2.78e2)+p.xy+vec2(p.z+rand_normal(),rand_normal()*float(i)-p.z)); // avoid periodicity
                 Property s = prop(p,d);
                 color += prescale*s.emittance;
                 vec3 n = normalize(g);
