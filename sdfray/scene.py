@@ -165,7 +165,10 @@ class Scene:
             self._glpg['u_alpha'] = 1/iters;
             self._fbo.clear(0.,0.,0.,1.)
             for i in range(iters):
-                self._glpg['u_nonce'] = 100*np.random.random()
+                try:
+                    self._glpg['u_nonce'] = 100*np.random.random()
+                except:
+                    pass
                 self._vao.render(moderngl.TRIANGLE_STRIP)
             frame = np.frombuffer(self._fbo.read(dtype='f4'), dtype=np.float32).reshape((self._res[1],self._res[0],3))
             m = iters/batching
