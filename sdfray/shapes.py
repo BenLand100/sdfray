@@ -94,8 +94,8 @@ class Plane(SDF):
 
     def __init__(self,anchor=A([0,-1,0]),normal=A([0,1,0]),**kwargs):
         super().__init__(**kwargs)
-        self.anchor = anchor
-        self.normal = N(normal)
+        self.anchor = A(anchor)
+        self.normal = N(A(normal))
         
     def fn(self,pts):
         return np.sum((pts - self.anchor)*self.normal,axis=-1)

@@ -224,7 +224,7 @@ class Scene:
         entrypoint = f'''
             void main() {{
                 vec2 st = gl_FragCoord.xy/u_resolution;
-                seed_rand(st);
+                seed_rand(st+vec2(u_nonce,100.-u_nonce));
                 float ratio = u_resolution.x/u_resolution.y;
                 if (ratio >= 1.0) {{
                     st.x *= ratio;
